@@ -4,7 +4,7 @@ import { useState } from 'react'
 import CalendarModal from './CalendarModal'
 import Link from 'next/link'
 
-type ActiveView = 'today' | 'browse' | 'stats' | 'commandments' | 'targets' | 'board' | 'photos' | 'calendar' | 'countdown'
+type ActiveView = 'today' | 'browse' | 'stats' | 'commandments' | 'targets' | 'board' | 'photos' | 'calendar' | 'countdown' | 'failures'
 
 interface TopBarProps {
   entryDates: string[]

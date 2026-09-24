@@ -19,9 +19,10 @@ interface Entry {
 
 interface ReadOnlyEntryProps {
   entry: Entry | null
+  onOpenFailureRegister?: () => void
 }
 
-export default function ReadOnlyEntry({ entry }: ReadOnlyEntryProps) {
+export default function ReadOnlyEntry({ entry, onOpenFailureRegister }: ReadOnlyEntryProps) {
   const [journalOpen, setJournalOpen] = useState(false)
 
   if (!entry) {
@@ -124,6 +125,19 @@ export default function ReadOnlyEntry({ entry }: ReadOnlyEntryProps) {
                   <span className="readonly-hours-label">hours</span>
                 </div>
               </div>
+
+              {onOpenFailureRegister && (
+                <div className="failure-register-link-row">
+                  <button
+                    type="button"
+                    className="failure-register-link-btn"
+                    onClick={onOpenFailureRegister}
+                  >
+                    📕 Failure Register
+                  </button>
+                  <span className="failure-register-link-hint">Reflect on setbacks &amp; extract lessons</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -137,6 +151,17 @@ export default function ReadOnlyEntry({ entry }: ReadOnlyEntryProps) {
             <span className="readonly-hours-value">{entry.hours_studied ?? 0}</span>
             <span className="readonly-hours-label">hours</span>
           </div>
+          {onOpenFailureRegister && (
+            <div className="failure-register-link-row" style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                className="failure-register-link-btn"
+                onClick={onOpenFailureRegister}
+              >
+                📕 Failure Register
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

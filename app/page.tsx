@@ -15,6 +15,7 @@ import BoardView from '@/components/BoardView'
 import PhotosView from '@/components/PhotosView'
 import CalendarView from '@/components/CalendarView'
 import CountdownView from '@/components/CountdownView'
+import FailureRegisterView from '@/components/FailureRegisterView'
 import {
   getEffectiveTodayString,
   isToday,
@@ -23,7 +24,7 @@ import {
   getMissedDaysThisWeek,
 } from '@/lib/dateUtils'
 
-type ActiveView = 'today' | 'browse' | 'stats' | 'commandments' | 'targets' | 'board' | 'photos' | 'calendar' | 'countdown'
+type ActiveView = 'today' | 'browse' | 'stats' | 'commandments' | 'targets' | 'board' | 'photos' | 'calendar' | 'countdown' | 'failures'
 
 interface Entry {
   entry_date: string
@@ -144,6 +145,11 @@ export default function HomePage() {
           <CalendarView />
         ) : activeView === 'countdown' ? (
           <CountdownView />
+        ) : activeView === 'failures' ? (
+          <FailureRegisterView
+            defaultDate={selectedDate}
+            onClose={() => handleViewChange('today')}
+          />
         ) : (
           <>
             {/* Quote — only on today's view */}
@@ -175,9 +181,13 @@ export default function HomePage() {
                 date={selectedDate}
                 initialEntry={currentEntry}
                 onSaved={handleEntrySaved}
+                onOpenFailureRegister={() => handleViewChange('failures')}
               />
             ) : (
-              <ReadOnlyEntry entry={currentEntry} />
+              <ReadOnlyEntry
+                entry={currentEntry}
+                onOpenFailureRegister={() => handleViewChange('failures')}
+              />
             )}
           </>
         )}

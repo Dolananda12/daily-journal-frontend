@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/apiClient'
-import FailureRegisterView from './FailureRegisterView'
 
 // ── Types ──────────────────────────────────────────────────────
 interface TodoItem {
@@ -24,6 +23,7 @@ interface EntryFormProps {
   date: string
   initialEntry: Entry | null
   onSaved: (entry: Entry) => void
+  onOpenFailureRegister?: () => void
 }
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
@@ -125,7 +125,7 @@ function TodoList({ items, onChange }: { items: TodoItem[]; onChange: (i: TodoIt
 }
 
 // ── Main EntryForm ─────────────────────────────────────────────
-export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProps) {
+export default function EntryForm({ date, initialEntry, onSaved, onOpenFailureRegister }: EntryFormProps) {
   const [todos,     setTodos]     = useState<TodoItem[]>(initialEntry?.todos ?? [])
   const [academics, setAcademics] = useState(initialEntry?.academics_notes ?? '')
   const [life,      setLife]      = useState(initialEntry?.life_notes ?? '')
@@ -137,7 +137,6 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [carriedOver, setCarriedOver] = useState(0) // count of tasks carried from previous day
-  const [showFailureRegister, setShowFailureRegister] = useState(false)
 
   useEffect(() => {
     setTodos(initialEntry?.todos ?? [])
@@ -370,9 +369,9 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
               <button
                 type="button"
                 className="failure-register-link-btn"
-                onClick={() => setShowFailureRegister(true)}
+                onClick={onOpenFailureRegister}
               >
-                📕 Log a Failure
+                📕 Failure Register
               </button>
               <span className="failure-register-link-hint">Reflect on setbacks &amp; extract lessons</span>
             </div>
@@ -389,14 +388,6 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
         </button>
         {saved && <span className="save-confirm">✓ Saved</span>}
       </div>
-
-      {/* ── Failure Register Overlay ── */}
-      {showFailureRegister && (
-        <FailureRegisterView
-          defaultDate={date}
-          onClose={() => setShowFailureRegister(false)}
-        />
-      )}
 
     </div>
   )
