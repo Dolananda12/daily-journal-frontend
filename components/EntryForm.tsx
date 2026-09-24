@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { apiFetch } from '@/lib/apiClient'
+import FailureRegisterView from './FailureRegisterView'
 
 // ── Types ──────────────────────────────────────────────────────
 interface TodoItem {
@@ -136,6 +137,7 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [carriedOver, setCarriedOver] = useState(0) // count of tasks carried from previous day
+  const [showFailureRegister, setShowFailureRegister] = useState(false)
 
   useEffect(() => {
     setTodos(initialEntry?.todos ?? [])
@@ -362,6 +364,19 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
                 <span className="hours-label">hours</span>
               </div>
             </div>
+
+            {/* Failure Register link */}
+            <div className="failure-register-link-row">
+              <button
+                type="button"
+                className="failure-register-link-btn"
+                onClick={() => setShowFailureRegister(true)}
+              >
+                📕 Log a Failure
+              </button>
+              <span className="failure-register-link-hint">Reflect on setbacks &amp; extract lessons</span>
+            </div>
+
           </div>
         )}
       </div>
@@ -374,6 +389,16 @@ export default function EntryForm({ date, initialEntry, onSaved }: EntryFormProp
         </button>
         {saved && <span className="save-confirm">✓ Saved</span>}
       </div>
+
+      {/* ── Failure Register Overlay ── */}
+      {showFailureRegister && (
+        <FailureRegisterView
+          defaultDate={date}
+          onClose={() => setShowFailureRegister(false)}
+        />
+      )}
+
     </div>
   )
 }
+
