@@ -130,7 +130,7 @@ export default function HomePage() {
         <CommandmentsView onClose={() => handleViewChange('today')} />
       )}
 
-      <main className={activeView === 'board' || activeView === 'calendar' || activeView === 'countdown' ? 'wide-container' : 'main-container'} style={{ display: activeView === 'commandments' ? 'none' : undefined }}>
+      <main className={activeView === 'board' || activeView === 'calendar' || activeView === 'countdown' || activeView === 'photos' ? 'wide-container' : 'main-container'} style={{ display: activeView === 'commandments' ? 'none' : undefined }}>
         {activeView === 'browse' ? (
           <BrowseView />
         ) : activeView === 'stats' ? (
