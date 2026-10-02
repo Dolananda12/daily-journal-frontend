@@ -40,6 +40,7 @@ export default function PhotosView() {
 
   // Lightbox state
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const observerTarget = useRef<HTMLDivElement>(null);
@@ -381,18 +382,44 @@ export default function PhotosView() {
               <div className="gallery-grid">
                 {group.images.map((photo) => {
                   const globalIndex = images.findIndex((img) => img.id === photo.id);
+                  const isValidUrl = (u?: string) => Boolean(u && !u.endsWith("/null") && u.trim().length > 0);
+                  const imageUrl = isValidUrl(photo.thumbUrl) ? photo.thumbUrl : isValidUrl(photo.displayUrl) ? photo.displayUrl : null;
+                  const hasFailed = failedImages.has(photo.id) || !imageUrl;
+
                   return (
                     <div
                       key={photo.id}
                       className="gallery-card"
                       onClick={() => setSelectedImageIndex(globalIndex >= 0 ? globalIndex : 0)}
                     >
-                      {/* Image Thumbnail */}
-                      <img
-                        src={photo.thumbUrl || photo.displayUrl}
-                        alt={photo.caption || "Photo"}
-                        loading="lazy"
-                      />
+                      {/* Image Thumbnail / Fallback Placeholder */}
+                      {hasFailed ? (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            background: "var(--surface-2)",
+                            color: "var(--text-muted)",
+                            userSelect: "none"
+                          }}
+                        >
+                          <ImageIcon size={26} style={{ opacity: 0.35, marginBottom: "6px" }} />
+                          <span style={{ fontSize: "0.72rem", opacity: 0.7 }}>Unavailable</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={imageUrl!}
+                          alt={photo.caption || "Photo"}
+                          loading="lazy"
+                          onError={() => {
+                            setFailedImages((prev) => new Set(prev).add(photo.id));
+                          }}
+                        />
+                      )}
 
                       {/* Favorite Heart Badge */}
                       {photo.isFavorite && (
@@ -424,6 +451,20 @@ export default function PhotosView() {
                                 fill: photo.isFavorite ? "#E53E3E" : "none",
                               }}
                             />
+                          </button>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm("Delete this photo?")) {
+                                handleDelete(photo.id);
+                              }
+                            }}
+                            className="gallery-icon-btn"
+                            title="Delete photo"
+                            style={{ marginLeft: "4px" }}
+                          >
+                            <Trash2 size={15} style={{ color: "var(--text)" }} />
                           </button>
                         </div>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
