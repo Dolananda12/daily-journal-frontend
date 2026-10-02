@@ -278,18 +278,6 @@ export default function PhotosView() {
         </div>
       </div>
 
-      {/* Upload Drop Zone Banner */}
-      <div
-        className={`gallery-dropzone ${dragActive ? "drag-active" : ""}`}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        <div className="gallery-dropzone-icon">
-          <Upload size={24} />
-        </div>
-        <h3>Drop photos here or click to browse</h3>
-        <p>High-res photos are compressed client-side to WebP and safely stored in Supabase</p>
-      </div>
-
       {/* Active Uploading Banner */}
       {isUploading && (
         <div className="gallery-upload-banner anim-scale-in">
@@ -367,21 +355,11 @@ export default function PhotosView() {
             <ImageIcon size={28} />
           </div>
           <h3>{filterFavorite ? "No favourite photos" : "Your photo gallery is empty"}</h3>
-          <p>
+          <p style={{ margin: 0 }}>
             {filterFavorite
               ? "Mark any photo with the heart icon to easily access it here."
               : "Start adding photos from your phone camera roll or computer. Drag and drop anywhere or paste with Ctrl+V."}
           </p>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              fileInputRef.current?.click();
-            }}
-            className="gallery-btn-primary"
-          >
-            <Plus size={16} />
-            <span>Select Photos</span>
-          </button>
         </div>
       ) : (
         /* Google Photos Date Grouped Grid */
