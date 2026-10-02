@@ -35,13 +35,41 @@ async function uploadBlobToSignedUrl(
 
   if (!res.ok) {
     const errorText = await res.text().catch(() => res.statusText);
-    throw new Error(`Upload to storage failed (${res.status}): ${errorText}`);
+    throw new Error(`Storage upload failed (${res.status}): ${errorText}`);
   }
 }
 
 /**
- * Manages uploading files with max concurrency of 3, sequential client-side compression,
- * and optimistic UI updates.
+ * Fallback direct multipart upload to Spring Boot backend.
+ */
+async function uploadViaBackendFallback(
+  processed: ProcessedImage,
+  originalFileName: string
+): Promise<any> {
+  const formData = new FormData();
+  formData.append('file', processed.displayBlob, `${originalFileName}.webp`);
+  formData.append('thumb', processed.thumbBlob, `${originalFileName}_t.webp`);
+  formData.append('width', String(processed.displayWidth));
+  formData.append('height', String(processed.displayHeight));
+  formData.append('checksum', processed.checksumSha256);
+  formData.append('takenAt', processed.takenAt);
+
+  const res = await apiFetch('/api/images/upload', {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Upload failed');
+    throw new Error(`Server upload failed (${res.status}): ${errText}`);
+  }
+
+  return await res.json();
+}
+
+/**
+ * Manages uploading files with concurrency control, sequential client-side compression,
+ * signed storage URL upload with automatic multipart fallback.
  */
 export async function processAndUploadBatch(
   files: File[],
@@ -63,28 +91,29 @@ export async function processAndUploadBatch(
 
   items.forEach((item) => callbacks.onItemUpdated(item));
 
-  // 1. Process files sequentially to conserve mobile memory
+  // 1. Process files sequentially to conserve mobile/browser memory
   const processedMap = new Map<string, { item: UploadItem; processed: ProcessedImage }>();
 
   for (const item of items) {
     try {
       item.status = 'processing';
-      item.progress = 10;
+      item.progress = 15;
       callbacks.onItemUpdated(item);
 
       const processed = await processImageForUpload(item.file);
       processedMap.set(item.id, { item, processed });
 
-      item.progress = 25;
+      item.progress = 30;
       callbacks.onItemUpdated(item);
     } catch (err: any) {
+      console.error('Error processing image:', item.file.name, err);
       item.status = 'error';
       item.error = err?.message || 'Failed to process image';
       callbacks.onItemUpdated(item);
     }
   }
 
-  // 2. Prepare upload intents payload
+  // 2. Prepare upload intents
   const validEntries = Array.from(processedMap.values());
   if (validEntries.length === 0) {
     callbacks.onAllCompleted();
@@ -111,19 +140,11 @@ export async function processAndUploadBatch(
       body: JSON.stringify(intentRequests),
     });
 
-    if (!res.ok) {
-      throw new Error(`Server rejected upload intents (${res.status})`);
+    if (res.ok) {
+      intentResponses = await res.json();
     }
-
-    intentResponses = await res.json();
-  } catch (err: any) {
-    validEntries.forEach(({ item }) => {
-      item.status = 'error';
-      item.error = err?.message || 'Failed to create upload session';
-      callbacks.onItemUpdated(item);
-    });
-    callbacks.onAllCompleted();
-    return;
+  } catch (err) {
+    console.warn('Upload intents failed, falling back to direct server upload:', err);
   }
 
   // 3. Upload files with concurrency limit = 3
@@ -131,16 +152,13 @@ export async function processAndUploadBatch(
   let activeIndex = 0;
 
   async function uploadWorker(): Promise<void> {
-    while (activeIndex < intentResponses.length) {
+    while (activeIndex < validEntries.length) {
       const index = activeIndex++;
-      const intent = intentResponses[index];
-      const entry = validEntries.find((e) => e.item.id === intent.clientId);
-      if (!entry) continue;
+      const { item, processed } = validEntries[index];
+      const intent = intentResponses.find((i) => i.clientId === item.id);
 
-      const { item, processed } = entry;
-
-      // Check if duplicate
-      if (intent.duplicate) {
+      // Check if server flagged duplicate
+      if (intent?.duplicate) {
         item.status = 'duplicate';
         item.progress = 100;
         item.serverImageId = intent.imageId;
@@ -149,37 +167,48 @@ export async function processAndUploadBatch(
         continue;
       }
 
+      item.status = 'uploading';
+      item.progress = 45;
+      callbacks.onItemUpdated(item);
+
       try {
-        item.status = 'uploading';
-        item.progress = 30;
-        callbacks.onItemUpdated(item);
+        let completedImage = null;
 
-        // Upload display and thumb in parallel to Supabase Storage signed URLs
-        await Promise.all([
-          uploadBlobToSignedUrl(intent.displayUploadUrl, processed.displayBlob, 'image/webp'),
-          uploadBlobToSignedUrl(intent.thumbUploadUrl, processed.thumbBlob, 'image/webp'),
-        ]);
+        // Try direct signed URL upload if available
+        if (intent?.displayUploadUrl && intent?.thumbUploadUrl) {
+          try {
+            await Promise.all([
+              uploadBlobToSignedUrl(intent.displayUploadUrl, processed.displayBlob, 'image/webp'),
+              uploadBlobToSignedUrl(intent.thumbUploadUrl, processed.thumbBlob, 'image/webp'),
+            ]);
 
-        item.progress = 85;
-        callbacks.onItemUpdated(item);
+            item.progress = 85;
+            callbacks.onItemUpdated(item);
 
-        // Call complete on backend
-        const completeRes = await apiFetch(`/api/images/${intent.imageId}/complete`, {
-          method: 'POST',
-        });
+            const completeRes = await apiFetch(`/api/images/${intent.imageId}/complete`, {
+              method: 'POST',
+            });
 
-        if (!completeRes.ok) {
-          throw new Error('Backend failed to verify upload completion');
+            if (completeRes.ok) {
+              completedImage = await completeRes.json();
+            }
+          } catch (storageErr) {
+            console.warn('Signed upload failed, falling back to direct backend upload:', storageErr);
+          }
         }
 
-        const completedImage = await completeRes.json();
+        // Fallback to direct backend upload if signed upload wasn't used or failed
+        if (!completedImage) {
+          completedImage = await uploadViaBackendFallback(processed, item.file.name);
+        }
+
         item.status = 'completed';
         item.progress = 100;
-        item.serverImageId = intent.imageId;
+        item.serverImageId = completedImage?.id;
         callbacks.onItemUpdated(item);
         callbacks.onItemCompleted(item, completedImage);
       } catch (err: any) {
-        console.error('Upload error for item:', item.file.name, err);
+        console.error('Upload failed for item:', item.file.name, err);
         item.status = 'error';
         item.error = err?.message || 'Upload failed';
         callbacks.onItemUpdated(item);
@@ -187,7 +216,7 @@ export async function processAndUploadBatch(
     }
   }
 
-  const workers = Array.from({ length: Math.min(CONCURRENCY, intentResponses.length) }, () =>
+  const workers = Array.from({ length: Math.min(CONCURRENCY, validEntries.length) }, () =>
     uploadWorker()
   );
 

@@ -1,19 +1,22 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+"use client";
+
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   Upload,
   Plus,
   Image as ImageIcon,
   Heart,
   Calendar,
-  Sparkles,
   AlertCircle,
   Loader2,
   CheckCircle2,
-  Filter,
-} from 'lucide-react';
-import { apiFetch } from '@/lib/apiClient';
-import { processAndUploadBatch, UploadItem } from '@/lib/uploadQueue';
-import LightboxModal, { GalleryImage } from './LightboxModal';
+  Trash2,
+  X,
+  Maximize2
+} from "lucide-react";
+import { apiFetch } from "@/lib/apiClient";
+import { processAndUploadBatch, UploadItem } from "@/lib/uploadQueue";
+import LightboxModal, { GalleryImage } from "./LightboxModal";
 
 interface DateGroup {
   label: string;
@@ -33,6 +36,7 @@ export default function PhotosView() {
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   // Lightbox state
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -40,7 +44,7 @@ export default function PhotosView() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const observerTarget = useRef<HTMLDivElement>(null);
 
-  // 1. Fetch initial photos
+  // 1. Fetch images from Spring Boot backend
   const fetchImages = useCallback(async (isReset = false, favOnly = filterFavorite) => {
     try {
       if (isReset) {
@@ -50,9 +54,9 @@ export default function PhotosView() {
         setLoadingMore(true);
       }
 
-      const params = new URLSearchParams({ limit: '60' });
-      if (favOnly) params.append('favorite', 'true');
-      if (!isReset && cursor) params.append('cursor', cursor);
+      const params = new URLSearchParams({ limit: "60" });
+      if (favOnly) params.append("favorite", "true");
+      if (!isReset && cursor) params.append("cursor", cursor);
 
       const res = await apiFetch(`/api/images?${params.toString()}`);
       if (res.ok) {
@@ -63,7 +67,7 @@ export default function PhotosView() {
         setHasMore(Boolean(data.hasMore));
       }
     } catch (err) {
-      console.error('Failed to load gallery images:', err);
+      console.error("Failed to load gallery images:", err);
     } finally {
       setLoadingInitial(false);
       setLoadingMore(false);
@@ -74,7 +78,7 @@ export default function PhotosView() {
     fetchImages(true, filterFavorite);
   }, [filterFavorite]);
 
-  // 2. Infinite scroll observer
+  // 2. Keyset pagination infinite scroll observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
@@ -92,18 +96,20 @@ export default function PhotosView() {
     };
   }, [hasMore, loadingMore, loadingInitial, fetchImages, filterFavorite]);
 
-  // 3. Handle File Selection & Upload
+  // 3. Process and Upload Files
   const handleFiles = (files: FileList | File[]) => {
     const fileArray = Array.from(files).filter(
       (f) =>
-        f.type.startsWith('image/') ||
-        f.name.toLowerCase().endsWith('.heic') ||
-        f.name.toLowerCase().endsWith('.heif')
+        f.type.startsWith("image/") ||
+        f.name.toLowerCase().endsWith(".heic") ||
+        f.name.toLowerCase().endsWith(".heif")
     );
 
     if (fileArray.length === 0) return;
 
+    setUploadError(null);
     setIsUploading(true);
+
     processAndUploadBatch(fileArray, {
       onItemUpdated: (item) => {
         setUploadItems((prev) => {
@@ -126,15 +132,16 @@ export default function PhotosView() {
       },
       onAllCompleted: () => {
         setIsUploading(false);
-        // Clean up completed queue items after 4 seconds
+        // Refresh list to ensure all thumbnails/signed URLs are loaded
+        fetchImages(true, filterFavorite);
         setTimeout(() => {
-          setUploadItems((prev) => prev.filter((i) => i.status === 'error' || i.status === 'duplicate'));
-        }, 4000);
+          setUploadItems((prev) => prev.filter((i) => i.status === "error" || i.status === "duplicate"));
+        }, 3000);
       },
     });
   };
 
-  // 4. Clipboard paste listener (Ctrl+V / Cmd+V)
+  // 4. Paste listener (Ctrl+V / Cmd+V)
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length > 0) {
@@ -142,17 +149,17 @@ export default function PhotosView() {
       }
     };
 
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
   }, []);
 
   // 5. Drag and Drop handlers
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
+    if (e.type === "dragenter" || e.type === "dragover") {
       setDragActive(true);
-    } else if (e.type === 'dragleave') {
+    } else if (e.type === "dragleave") {
       setDragActive(false);
     }
   };
@@ -170,9 +177,9 @@ export default function PhotosView() {
   const handleDelete = async (id: string) => {
     setImages((prev) => prev.filter((img) => img.id !== id));
     try {
-      await apiFetch(`/api/images/${id}`, { method: 'DELETE' });
+      await apiFetch(`/api/images/${id}`, { method: "DELETE" });
     } catch (err) {
-      console.error('Failed to delete image:', err);
+      console.error("Failed to delete image:", err);
     }
   };
 
@@ -182,7 +189,7 @@ export default function PhotosView() {
     );
   };
 
-  // 7. Group images by taken date (Google Photos style)
+  // 7. Group images by capture date (Google Photos style)
   const groupImagesByDate = (imgs: GalleryImage[]): DateGroup[] => {
     const groupsMap = new Map<string, { label: string; dateKey: string; images: GalleryImage[] }>();
 
@@ -196,17 +203,17 @@ export default function PhotosView() {
     imgs.forEach((img) => {
       const d = new Date(img.takenAt);
       const dateStr = d.toDateString();
-      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-      let label = '';
+      let label = "";
       if (dateStr === todayStr) {
-        label = 'Today';
+        label = "Today";
       } else if (dateStr === yesterdayStr) {
-        label = 'Yesterday';
+        label = "Yesterday";
       } else if (d.getFullYear() === now.getFullYear()) {
-        label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        label = d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
       } else {
-        label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        label = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       }
 
       if (!groupsMap.has(dateKey)) {
@@ -220,14 +227,13 @@ export default function PhotosView() {
 
   const dateGroups = groupImagesByDate(images);
 
-  // Active upload count
   const activeUploadCount = uploadItems.filter(
-    (i) => i.status === 'processing' || i.status === 'uploading'
+    (i) => i.status === "processing" || i.status === "uploading"
   ).length;
 
   return (
     <div
-      className="w-full pb-20 anim-fade-in relative"
+      className="gallery-container anim-fade-in"
       onDragEnter={handleDrag}
       onDragOver={handleDrag}
       onDragLeave={handleDrag}
@@ -237,7 +243,7 @@ export default function PhotosView() {
       <input
         type="file"
         ref={fileInputRef}
-        className="hidden"
+        style={{ display: "none" }}
         accept="image/*,.heic,.heif"
         multiple
         onChange={(e) => {
@@ -245,33 +251,26 @@ export default function PhotosView() {
         }}
       />
 
-      {/* Top Controls Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pt-2">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-black">Gallery</h1>
-          <p className="text-xs text-black/50 mt-0.5">
-            Private permanent photo library • Grouped by capture date
-          </p>
+      {/* Header Row */}
+      <div className="gallery-header-row">
+        <div className="gallery-title-block">
+          <h1>Photos & Memories</h1>
+          <p>Durable, private photo library • Grouped by capture date</p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          {/* Favorite Filter Toggle */}
+        <div className="gallery-controls">
           <button
             onClick={() => setFilterFavorite((prev) => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              filterFavorite
-                ? 'bg-red-50 text-red-600 border border-red-200'
-                : 'bg-black/5 text-black/70 hover:bg-black/10 border border-transparent'
-            }`}
+            className={`gallery-btn-secondary ${filterFavorite ? "active" : ""}`}
+            title="Filter favorite photos"
           >
-            <Heart size={14} fill={filterFavorite ? 'currentColor' : 'none'} />
+            <Heart size={15} fill={filterFavorite ? "currentColor" : "none"} />
             <span>Favourites</span>
           </button>
 
-          {/* Add Photos Button */}
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-4 py-1.5 bg-black text-white hover:bg-black/80 rounded-lg text-xs font-medium shadow-sm transition-all active:scale-95"
+            className="gallery-btn-primary"
           >
             <Plus size={16} />
             <span>Add Photos</span>
@@ -279,62 +278,68 @@ export default function PhotosView() {
         </div>
       </div>
 
-      {/* Drag & Drop Visual Overlay */}
-      {dragActive && (
-        <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-white border-4 border-dashed border-white m-4 rounded-2xl pointer-events-none anim-fade-in">
-          <Upload size={48} className="mb-3 animate-bounce" />
-          <h2 className="text-xl font-semibold">Drop photos here to upload</h2>
-          <p className="text-sm text-white/70">JPG, PNG, HEIC, WebP supported</p>
+      {/* Upload Drop Zone Banner */}
+      <div
+        className={`gallery-dropzone ${dragActive ? "drag-active" : ""}`}
+        onClick={() => fileInputRef.current?.click()}
+      >
+        <div className="gallery-dropzone-icon">
+          <Upload size={24} />
         </div>
-      )}
+        <h3>Drop photos here or click to browse</h3>
+        <p>High-res photos are compressed client-side to WebP and safely stored in Supabase</p>
+      </div>
 
-      {/* Floating Upload Progress Banner */}
+      {/* Active Uploading Banner */}
       {isUploading && (
-        <div className="sticky top-20 z-30 mb-6 bg-white border border-black/10 shadow-lg rounded-xl p-3 flex items-center justify-between gap-4 anim-fade-in">
-          <div className="flex items-center gap-3">
-            <Loader2 size={18} className="animate-spin text-black" />
+        <div className="gallery-upload-banner anim-scale-in">
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <Loader2 size={20} className="spin" style={{ color: "var(--accent-dark)" }} />
             <div>
-              <p className="text-xs font-semibold text-black">
-                Uploading {activeUploadCount} photo{activeUploadCount > 1 ? 's' : ''}...
+              <p style={{ margin: 0, fontSize: "0.88rem", fontWeight: 600, color: "var(--text)" }}>
+                Uploading {activeUploadCount} photo{activeUploadCount > 1 ? "s" : ""}...
               </p>
-              <p className="text-[11px] text-black/50">Optimising and saving to private storage</p>
+              <p style={{ margin: 0, fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                Generating thumbnails and streaming to private storage
+              </p>
             </div>
           </div>
-          <span className="text-[11px] font-mono px-2 py-0.5 bg-black/5 rounded text-black/60">
-            Client-side WebP
+          <span style={{ fontSize: "0.75rem", fontFamily: "monospace", color: "var(--text-2)", background: "var(--surface-2)", padding: "4px 8px", borderRadius: "var(--radius-sm)" }}>
+            WebP 2560px
           </span>
         </div>
       )}
 
-      {/* Active Upload Tile Previews (Optimistic UI) */}
+      {/* Optimistic Preview Tiles */}
       {uploadItems.length > 0 && (
-        <div className="mb-8 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
+        <div className="gallery-queue-grid">
           {uploadItems.map((item) => (
-            <div
-              key={item.id}
-              className="relative aspect-square rounded-lg overflow-hidden border border-black/10 bg-black/5 flex flex-col justify-end p-2"
-            >
+            <div key={item.id} className="gallery-queue-card">
               <img
                 src={item.previewUrl}
                 alt="Uploading preview"
-                className="absolute inset-0 w-full h-full object-cover filter brightness-90"
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
-              <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center p-2">
-                {item.status === 'completed' ? (
-                  <CheckCircle2 size={24} className="text-emerald-400 drop-shadow" />
-                ) : item.status === 'duplicate' ? (
-                  <span className="text-[10px] text-white bg-black/60 px-1.5 py-0.5 rounded">
+              <div className="gallery-queue-overlay">
+                {item.status === "completed" ? (
+                  <CheckCircle2 size={24} color="#48BB78" />
+                ) : item.status === "duplicate" ? (
+                  <span style={{ fontSize: "0.72rem", background: "rgba(0,0,0,0.7)", padding: "2px 6px", borderRadius: "4px" }}>
                     Already saved
                   </span>
-                ) : item.status === 'error' ? (
-                  <AlertCircle size={24} className="text-red-400 drop-shadow" />
+                ) : item.status === "error" ? (
+                  <AlertCircle size={24} color="#F56565" />
                 ) : (
                   <>
-                    <Loader2 size={20} className="animate-spin text-white mb-1.5" />
-                    <div className="w-full bg-white/30 h-1.5 rounded-full overflow-hidden">
+                    <Loader2 size={20} className="spin" style={{ marginBottom: "6px" }} />
+                    <div style={{ width: "80%", background: "rgba(255,255,255,0.3)", height: "4px", borderRadius: "999px", overflow: "hidden" }}>
                       <div
-                        className="bg-white h-full transition-all duration-300"
-                        style={{ width: `${item.progress}%` }}
+                        style={{
+                          width: `${item.progress}%`,
+                          height: "100%",
+                          background: "#fff",
+                          transition: "width 0.3s ease",
+                        }}
                       />
                     </div>
                   </>
@@ -345,121 +350,113 @@ export default function PhotosView() {
         </div>
       )}
 
-      {/* Main Gallery List */}
+      {/* Loading Skeleton */}
       {loadingInitial ? (
-        <div className="space-y-6 pt-4">
-          {[1, 2].map((g) => (
-            <div key={g} className="space-y-3">
-              <div className="h-4 bg-black/10 rounded w-28 animate-pulse" />
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="aspect-square bg-black/5 rounded-xl border border-black/5 animate-pulse"
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
+        <div className="entry-card" style={{ minHeight: "260px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div className="quote-loading">
+            <span /><span /><span />
+          </div>
         </div>
       ) : images.length === 0 ? (
         /* Empty State */
         <div
-          className="my-12 py-16 px-6 border-2 border-dashed border-black/15 rounded-2xl flex flex-col items-center justify-center text-center cursor-pointer hover:border-black/30 hover:bg-black/[0.02] transition-all"
+          className="gallery-empty-box"
           onClick={() => fileInputRef.current?.click()}
         >
-          <div className="w-14 h-14 bg-black/5 rounded-full flex items-center justify-center mb-3 text-black/60">
+          <div className="gallery-empty-icon">
             <ImageIcon size={28} />
           </div>
-          <h3 className="text-base font-semibold text-black">
-            {filterFavorite ? 'No favourite photos' : 'Your gallery is empty'}
-          </h3>
-          <p className="text-xs text-black/50 mt-1 max-w-sm">
+          <h3>{filterFavorite ? "No favourite photos" : "Your photo gallery is empty"}</h3>
+          <p>
             {filterFavorite
-              ? 'Tap the heart icon on any photo to add it to your favourites.'
-              : 'Tap here or drag and drop photos from your phone or desktop. Paste images directly with Ctrl+V.'}
+              ? "Mark any photo with the heart icon to easily access it here."
+              : "Start adding photos from your phone camera roll or computer. Drag and drop anywhere or paste with Ctrl+V."}
           </p>
           <button
             onClick={(e) => {
               e.stopPropagation();
               fileInputRef.current?.click();
             }}
-            className="mt-5 px-4 py-2 bg-black text-white text-xs font-medium rounded-lg shadow-sm hover:bg-black/80 transition-all"
+            className="gallery-btn-primary"
           >
-            Select Photos
+            <Plus size={16} />
+            <span>Select Photos</span>
           </button>
         </div>
       ) : (
-        /* Date-grouped Google Photos-style Grid */
-        <div className="space-y-8">
+        /* Google Photos Date Grouped Grid */
+        <div>
           {dateGroups.map((group) => (
-            <div key={group.dateKey} className="space-y-3">
+            <div key={group.dateKey} className="gallery-date-section">
               {/* Sticky Date Header */}
-              <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md py-2 flex items-center justify-between border-b border-black/5">
-                <div className="flex items-center gap-2">
-                  <Calendar size={14} className="text-black/40" />
-                  <h2 className="text-xs font-bold text-black uppercase tracking-wider">
-                    {group.label}
-                  </h2>
+              <div className="gallery-date-header">
+                <div className="gallery-date-label">
+                  <Calendar size={14} style={{ color: "var(--accent-dark)" }} />
+                  <span>{group.label}</span>
                 </div>
-                <span className="text-[11px] font-medium text-black/40">
-                  {group.images.length} item{group.images.length > 1 ? 's' : ''}
+                <span className="gallery-date-count">
+                  {group.images.length} photo{group.images.length > 1 ? "s" : ""}
                 </span>
               </div>
 
-              {/* Photo Tiles */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5">
+              {/* Photo Tiles Grid */}
+              <div className="gallery-grid">
                 {group.images.map((photo) => {
                   const globalIndex = images.findIndex((img) => img.id === photo.id);
                   return (
                     <div
                       key={photo.id}
-                      className="group relative aspect-square rounded-xl overflow-hidden bg-black/5 cursor-zoom-in border border-black/10 shadow-xs hover:shadow-md transition-all duration-300"
+                      className="gallery-card"
                       onClick={() => setSelectedImageIndex(globalIndex >= 0 ? globalIndex : 0)}
                     >
-                      {/* Thumbnail Image */}
+                      {/* Image Thumbnail */}
                       <img
                         src={photo.thumbUrl || photo.displayUrl}
-                        alt={photo.caption || 'Photo'}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        alt={photo.caption || "Photo"}
                         loading="lazy"
                       />
 
-                      {/* Favorite Badge */}
+                      {/* Favorite Heart Badge */}
                       {photo.isFavorite && (
-                        <div className="absolute top-2 left-2 p-1 bg-black/40 rounded-full text-red-500 drop-shadow">
-                          <Heart size={12} fill="currentColor" />
+                        <div className="gallery-fav-indicator">
+                          <Heart size={13} fill="currentColor" />
                         </div>
                       )}
 
                       {/* Hover Overlay */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col justify-between p-2.5">
-                        <div className="flex justify-end">
+                      <div className="gallery-card-overlay">
+                        <div className="gallery-card-actions">
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleFavorite(photo.id, !photo.isFavorite);
                               apiFetch(`/api/images/${photo.id}`, {
-                                method: 'PATCH',
-                                headers: { 'Content-Type': 'application/json' },
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
                                 body: JSON.stringify({ isFavorite: !photo.isFavorite }),
                               });
                             }}
-                            className="p-1.5 rounded-full bg-white/90 text-black hover:scale-110 transition-all shadow-sm"
-                            title={photo.isFavorite ? 'Unfavourite' : 'Favourite'}
+                            className="gallery-icon-btn"
+                            title={photo.isFavorite ? "Unfavourite" : "Favourite"}
                           >
                             <Heart
-                              size={14}
-                              className={photo.isFavorite ? 'text-red-500 fill-red-500' : 'text-black/70'}
+                              size={15}
+                              style={{
+                                color: photo.isFavorite ? "#E53E3E" : "var(--text)",
+                                fill: photo.isFavorite ? "#E53E3E" : "none",
+                              }}
                             />
                           </button>
                         </div>
-                        <p className="text-[10px] text-white/90 font-medium truncate">
-                          {new Date(photo.takenAt).toLocaleTimeString('en-US', {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                          })}
-                        </p>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span className="gallery-time-badge">
+                            {new Date(photo.takenAt).toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </span>
+                          <Maximize2 size={14} style={{ opacity: 0.8 }} />
+                        </div>
                       </div>
                     </div>
                   );
@@ -470,12 +467,12 @@ export default function PhotosView() {
         </div>
       )}
 
-      {/* Keyset Pagination Sentinel */}
-      <div ref={observerTarget} className="py-8 flex justify-center">
+      {/* Keyset Pagination Infinite Scroll Target */}
+      <div ref={observerTarget} style={{ padding: "16px 0", display: "flex", justifyContent: "center" }}>
         {loadingMore && (
-          <div className="flex items-center gap-2 text-xs text-black/50">
-            <Loader2 size={16} className="animate-spin" />
-            <span>Loading more photos...</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+            <Loader2 size={16} className="spin" />
+            <span>Loading older photos...</span>
           </div>
         )}
       </div>
