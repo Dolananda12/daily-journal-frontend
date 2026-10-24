@@ -10,11 +10,48 @@ interface TargetItem {
   done: boolean
 }
 
-type SubTab = 'monthly' | 'semester'
+type SubTab = 'weekly' | 'monthly' | 'semester'
 
 // ── Helpers ───────────────────────────────────────────────────
 function uid() {
   return Math.random().toString(36).slice(2, 10)
+}
+
+function getMonday(d = new Date()) {
+  const date = new Date(d)
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+  date.setDate(diff)
+  return date
+}
+
+function currentWeekKey() {
+  const mon = getMonday()
+  const y = mon.getFullYear()
+  const m = String(mon.getMonth() + 1).padStart(2, '0')
+  const d = String(mon.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function shiftWeek(weekKey: string, deltaWeeks: number) {
+  const [y, m, d] = weekKey.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + deltaWeeks * 7)
+  const ny = date.getFullYear()
+  const nm = String(date.getMonth() + 1).padStart(2, '0')
+  const nd = String(date.getDate()).padStart(2, '0')
+  return `${ny}-${nm}-${nd}`
+}
+
+function weekLabel(weekKey: string) {
+  const [y, m, d] = weekKey.split('-').map(Number)
+  const start = new Date(y, m - 1, d)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+
+  const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${startStr} – ${endStr}`
 }
 
 function currentMonthKey() {
@@ -163,6 +200,57 @@ function TargetList({
         </button>
         {saved && <span className="save-confirm">✓ Saved</span>}
       </div>
+    </div>
+  )
+}
+
+// ── Weekly Panel ──────────────────────────────────────────────
+function WeeklyPanel() {
+  const [weekKey, setWeekKey] = useState(currentWeekKey())
+  const [items, setItems] = useState<TargetItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  const load = useCallback(async (key: string) => {
+    setLoading(true)
+    try {
+      const res = await apiFetch(`/api/targets?type=weekly&key=${key}`)
+      const data = await res.json()
+      setItems(data.items ?? [])
+    } catch { setItems([]) }
+    finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load(weekKey) }, [weekKey, load])
+
+  async function save() {
+    setSaving(true)
+    try {
+      await apiFetch(`/api/targets?type=weekly&key=${weekKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items }),
+      })
+      setSaved(true)
+      setTimeout(() => setSaved(false), 3000)
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="targets-panel anim-slide-up">
+      {/* Week nav */}
+      <div className="targets-month-nav">
+        <button className="targets-nav-btn" onClick={() => setWeekKey(k => shiftWeek(k, -1))} aria-label="Previous week">‹</button>
+        <h2 className="targets-month-label">{weekLabel(weekKey)}</h2>
+        <button className="targets-nav-btn" onClick={() => setWeekKey(k => shiftWeek(k, 1))} aria-label="Next week">›</button>
+      </div>
+
+      {loading ? (
+        <div className="stats-loading"><span className="save-spinner" style={{ width: 20, height: 20 }} /> Loading…</div>
+      ) : (
+        <TargetList items={items} onChange={setItems} saving={saving} onSave={save} saved={saved} />
+      )}
     </div>
   )
 }
@@ -347,7 +435,7 @@ function SemesterPanel() {
 
 // ── Main TargetsView ──────────────────────────────────────────
 export default function TargetsView() {
-  const [sub, setSub] = useState<SubTab>('monthly')
+  const [sub, setSub] = useState<SubTab>('weekly')
 
   return (
     <div className="targets-view">
@@ -358,6 +446,13 @@ export default function TargetsView() {
 
       {/* Sub-tabs */}
       <div className="targets-subtabs">
+        <button
+          id="targets-tab-weekly"
+          className={`targets-subtab${sub === 'weekly' ? ' active' : ''}`}
+          onClick={() => setSub('weekly')}
+        >
+          ⚡ Weekly
+        </button>
         <button
           id="targets-tab-monthly"
           className={`targets-subtab${sub === 'monthly' ? ' active' : ''}`}
@@ -374,7 +469,7 @@ export default function TargetsView() {
         </button>
       </div>
 
-      {sub === 'monthly' ? <MonthlyPanel /> : <SemesterPanel />}
+      {sub === 'weekly' ? <WeeklyPanel /> : sub === 'monthly' ? <MonthlyPanel /> : <SemesterPanel />}
     </div>
   )
 }
