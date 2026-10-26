@@ -10,6 +10,12 @@ interface TodoItem {
   done: boolean
 }
 
+interface TargetItem {
+  id: string
+  text: string
+  done: boolean
+}
+
 interface Entry {
   entry_date: string
   academics_notes: string
@@ -28,6 +34,40 @@ interface EntryFormProps {
 
 function uid() { return Math.random().toString(36).slice(2, 10) }
 
+function autoResize(el: HTMLTextAreaElement | null) {
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+
+function getMonday(d = new Date()) {
+  const date = new Date(d)
+  const day = date.getDay()
+  const diff = date.getDate() - day + (day === 0 ? -6 : 1)
+  date.setDate(diff)
+  return date
+}
+
+function currentWeekKey(dateStr: string) {
+  const base = new Date(dateStr + 'T00:00:00')
+  const mon = getMonday(base)
+  const y = mon.getFullYear()
+  const m = String(mon.getMonth() + 1).padStart(2, '0')
+  const d = String(mon.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+function weekLabel(weekKey: string) {
+  if (!weekKey) return ''
+  const [y, m, d] = weekKey.split('-').map(Number)
+  const start = new Date(y, m - 1, d)
+  const end = new Date(start)
+  end.setDate(start.getDate() + 6)
+  const startStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endStr = end.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  return `${startStr} – ${endStr}`
+}
+
 // ── Todo list inline component ─────────────────────────────────
 function TodoList({ items, onChange }: { items: TodoItem[]; onChange: (i: TodoItem[]) => void }) {
   function toggle(id: string) {
@@ -43,12 +83,17 @@ function TodoList({ items, onChange }: { items: TodoItem[]; onChange: (i: TodoIt
     const next = [...items, { id: uid(), text: '', done: false }]
     onChange(next)
     setTimeout(() => {
-      const inputs = document.querySelectorAll<HTMLInputElement>('.todo-item-input')
-      inputs[inputs.length - 1]?.focus()
+      const textareas = document.querySelectorAll<HTMLTextAreaElement>('.todo-item-input')
+      const last = textareas[textareas.length - 1]
+      last?.focus()
+      autoResize(last)
     }, 40)
   }
-  function onKey(e: React.KeyboardEvent<HTMLInputElement>, id: string) {
-    if (e.key === 'Enter') { e.preventDefault(); add() }
+  function onKey(e: React.KeyboardEvent<HTMLTextAreaElement>, id: string) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      add()
+    }
     if (e.key === 'Backspace') {
       const item = items.find(t => t.id === id)
       if (item?.text === '') {
@@ -56,8 +101,10 @@ function TodoList({ items, onChange }: { items: TodoItem[]; onChange: (i: TodoIt
         const idx = items.findIndex(t => t.id === id)
         remove(id)
         setTimeout(() => {
-          const inputs = document.querySelectorAll<HTMLInputElement>('.todo-item-input')
-          inputs[Math.max(0, idx - 1)]?.focus()
+          const textareas = document.querySelectorAll<HTMLTextAreaElement>('.todo-item-input')
+          const prev = textareas[Math.max(0, idx - 1)]
+          prev?.focus()
+          autoResize(prev)
         }, 40)
       }
     }
@@ -100,10 +147,16 @@ function TodoList({ items, onChange }: { items: TodoItem[]; onChange: (i: TodoIt
                 </svg>
               )}
             </button>
-            <input
+            <textarea
               className="todo-item-input"
+              rows={1}
+              ref={el => autoResize(el)}
               value={item.text}
-              onChange={e => edit(item.id, e.target.value)}
+              onChange={e => {
+                edit(item.id, e.target.value)
+                autoResize(e.target)
+              }}
+              onFocus={e => autoResize(e.target)}
               onKeyDown={e => onKey(e, item.id)}
               placeholder="Add a task…"
             />
@@ -149,42 +202,80 @@ export default function EntryForm({ date, initialEntry, onSaved, onOpenFailureRe
     setCarriedOver(0)
   }, [date, initialEntry])
 
-  // ── Carry over unfinished tasks from exactly the previous day ──
+  // ── Carry over unfinished tasks from previous days ──
   useEffect(() => {
-    // Guard 1: entry already saved in DB → always trust DB, never overwrite
-    if (initialEntry !== null) return
+    // If today already has tasks loaded from DB, don't overwrite
+    if ((initialEntry?.todos ?? []).length > 0) return
 
-    // Guard 2: migration already ran for this date this browser session
-    //          (handles: user deletes tasks → refresh → they stay gone)
     const sessionKey = `todo-migrated-${date}`
     if (typeof window !== 'undefined' && sessionStorage.getItem(sessionKey)) return
 
-    // Mark as done *before* the async fetch so concurrent renders can't double-run
-    if (typeof window !== 'undefined') sessionStorage.setItem(sessionKey, '1')
+    let isMounted = true
 
-    // Build EXACTLY yesterday's date string (one day back, no further)
-    const today = new Date(date + 'T00:00:00')
-    const prev  = new Date(today)
-    prev.setDate(today.getDate() - 1)
-    const prevStr = [
-      prev.getFullYear(),
-      String(prev.getMonth() + 1).padStart(2, '0'),
-      String(prev.getDate()).padStart(2, '0'),
-    ].join('-')
+    async function loadUndoneTasks() {
+      try {
+        // 1. Try yesterday first
+        const today = new Date(date + 'T00:00:00')
+        const yesterday = new Date(today)
+        yesterday.setDate(today.getDate() - 1)
+        const yStr = [
+          yesterday.getFullYear(),
+          String(yesterday.getMonth() + 1).padStart(2, '0'),
+          String(yesterday.getDate()).padStart(2, '0'),
+        ].join('-')
 
-    apiFetch(`/api/entries/${prevStr}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (!data) return
-        const unfinished: TodoItem[] = (data.todos ?? [])
-          .filter((t: TodoItem) => !t.done)
-          .map((t: TodoItem) => ({ ...t, id: uid(), done: false }))
-        if (unfinished.length > 0) {
-          setTodos(unfinished)
-          setCarriedOver(unfinished.length)
+        const yRes = await apiFetch(`/api/entries/${yStr}`)
+        if (yRes.ok) {
+          const text = await yRes.text()
+          const data = text ? JSON.parse(text) : null
+          const unfinished: TodoItem[] = (data?.todos ?? [])
+            .filter((t: TodoItem) => !t.done)
+            .map((t: TodoItem) => ({ ...t, id: uid(), done: false }))
+          if (unfinished.length > 0 && isMounted) {
+            if (typeof window !== 'undefined') sessionStorage.setItem(sessionKey, '1')
+            setTodos(prev => (prev.length === 0 ? unfinished : prev))
+            setCarriedOver(unfinished.length)
+            return
+          }
         }
-      })
-      .catch(() => {})
+
+        // 2. If yesterday had no undone tasks, check most recent past entry
+        const listRes = await apiFetch('/api/entries')
+        if (listRes.ok) {
+          const listText = await listRes.text()
+          const listData = listText ? JSON.parse(listText) : []
+          if (Array.isArray(listData)) {
+            const pastDates = listData
+              .map((e: { entry_date: string }) => e.entry_date)
+              .filter((d: string) => d < date)
+              .sort((a: string, b: string) => b.localeCompare(a))
+
+            if (pastDates.length > 0 && pastDates[0] !== yStr) {
+              const mRes = await apiFetch(`/api/entries/${pastDates[0]}`)
+              if (mRes.ok) {
+                const mText = await mRes.text()
+                const mData = mText ? JSON.parse(mText) : null
+                const unfinished: TodoItem[] = (mData?.todos ?? [])
+                  .filter((t: TodoItem) => !t.done)
+                  .map((t: TodoItem) => ({ ...t, id: uid(), done: false }))
+                if (unfinished.length > 0 && isMounted) {
+                  if (typeof window !== 'undefined') sessionStorage.setItem(sessionKey, '1')
+                  setTodos(prev => (prev.length === 0 ? unfinished : prev))
+                  setCarriedOver(unfinished.length)
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // ignore carryover network error
+      }
+    }
+
+    loadUndoneTasks()
+    return () => {
+      isMounted = false
+    }
   }, [date, initialEntry])
 
 
@@ -221,6 +312,39 @@ export default function EntryForm({ date, initialEntry, onSaved, onOpenFailureRe
     setHours(h => Math.max(0, Math.min(24, parseFloat((h + delta).toFixed(1)))))
   }
 
+  // ── Weekly Targets ──
+  const [weeklyTargets, setWeeklyTargets] = useState<TargetItem[]>([])
+  const [weekKey, setWeekKey] = useState('')
+
+  useEffect(() => {
+    const wKey = currentWeekKey(date)
+    setWeekKey(wKey)
+    apiFetch(`/api/targets?type=weekly&key=${wKey}`)
+      .then(async r => {
+        if (!r.ok) return []
+        const text = await r.text()
+        const data = text ? JSON.parse(text) : null
+        return Array.isArray(data?.items) ? data.items : []
+      })
+      .then(items => setWeeklyTargets(items))
+      .catch(() => setWeeklyTargets([]))
+  }, [date])
+
+  const toggleWeeklyTarget = async (id: string) => {
+    const updated = weeklyTargets.map(t => (t.id === id ? { ...t, done: !t.done } : t))
+    setWeeklyTargets(updated)
+    try {
+      await apiFetch(`/api/targets?type=weekly&key=${weekKey}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: updated }),
+      })
+    } catch {
+      // rollback or ignore
+    }
+  }
+
+  // ── Upcoming Events ──
   const [upcomingEvents, setUpcomingEvents] = useState<{ id: string; title: string; event_date: string }[]>([])
 
   useEffect(() => {
@@ -230,12 +354,13 @@ export default function EntryForm({ date, initialEntry, onSaved, onOpenFailureRe
     oneWeekLater.setDate(baseDate.getDate() + 7)
 
     apiFetch(`/api/events/upcoming?from=${date}`)
-      .then(r => r.ok ? r.json() : [])
+      .then(async r => {
+        if (!r.ok) return []
+        const text = await r.text()
+        const data = text ? JSON.parse(text) : []
+        return Array.isArray(data) ? data : []
+      })
       .then((data: { id: string; title: string; event_date: string }[]) => {
-        if (!Array.isArray(data)) {
-          setUpcomingEvents([])
-          return
-        }
         // Filter events taking place within 7 days
         const filtered = data.filter(ev => {
           const evDate = new Date(ev.event_date + 'T00:00:00')
@@ -248,6 +373,46 @@ export default function EntryForm({ date, initialEntry, onSaved, onOpenFailureRe
 
   return (
     <div className="entry-card anim-slide-up">
+
+      {/* ── Weekly Targets Card (Displayed on TOP of Approaching Events) ── */}
+      {weeklyTargets.length > 0 && (
+        <div className="weekly-targets-today-card">
+          <div className="weekly-targets-today-header">
+            <div className="weekly-targets-today-title-wrap">
+              <span className="weekly-targets-icon">⚡</span>
+              <span className="weekly-targets-title">Weekly Targets</span>
+              <span className="weekly-targets-range">{weekLabel(weekKey)}</span>
+            </div>
+            <span className="weekly-targets-badge">
+              {weeklyTargets.filter(t => t.done).length}/{weeklyTargets.length} done
+            </span>
+          </div>
+          <div className="weekly-targets-today-list">
+            {weeklyTargets.map(target => (
+              <div key={target.id} className={`weekly-target-item${target.done ? ' done' : ''}`}>
+                <button
+                  type="button"
+                  className="todo-checkbox"
+                  onClick={() => toggleWeeklyTarget(target.id)}
+                  aria-label={target.done ? 'Mark undone' : 'Mark done'}
+                >
+                  {target.done ? (
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <circle cx="9" cy="9" r="8" fill="var(--accent)" />
+                      <path d="M5 9l2.8 3L13 6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  ) : (
+                    <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                      <circle cx="9" cy="9" r="8" stroke="var(--border-strong)" strokeWidth="1.5"/>
+                    </svg>
+                  )}
+                </button>
+                <span className="weekly-target-text">{target.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Approaching Events Banner (1 Week Window) ── */}
       {upcomingEvents.length > 0 && (

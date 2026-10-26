@@ -1686,7 +1686,7 @@ body {
 
 .target-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 8px 6px;
   border-radius: var(--radius-md);
@@ -1712,6 +1712,7 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 50%;
+  margin-top: 2px;
   transition: transform 0.15s ease;
 }
 .target-checkbox:hover { transform: scale(1.15); }
@@ -1726,6 +1727,10 @@ body {
   color: var(--text);
   padding: 2px 0;
   min-width: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.45;
+  word-break: break-word;
   transition: color var(--transition);
 }
 .target-item-input::placeholder { color: var(--text-muted); }
@@ -1737,6 +1742,7 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   opacity: 0;
+  margin-top: 2px;
   transition: opacity 0.2s, color 0.2s;
   padding: 0 4px;
   line-height: 1;
@@ -1835,7 +1841,7 @@ body {
 
 .todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   padding: 6px 4px;
   border-radius: var(--radius-md);
@@ -1861,6 +1867,7 @@ body {
   flex-shrink: 0;
   width: 24px;
   height: 24px;
+  margin-top: 2px;
   transition: transform 0.15s;
 }
 .todo-checkbox:hover { transform: scale(1.12); }
@@ -1875,6 +1882,10 @@ body {
   color: var(--text);
   padding: 2px 0;
   min-width: 0;
+  resize: none;
+  overflow: hidden;
+  line-height: 1.45;
+  word-break: break-word;
   transition: color var(--transition);
 }
 .todo-item-input::placeholder { color: var(--text-muted); }
@@ -1885,19 +1896,22 @@ body {
   font-size: 0.95rem;
   color: var(--text);
   padding: 2px 0;
+  line-height: 1.45;
+  word-break: break-word;
 }
 
 .todo-delete-btn {
   background: none;
   border: none;
-  font-size: 1.2rem;
   color: var(--text-muted);
   cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.15s, color 0.15s;
-  padding: 0 4px;
+  font-size: 1.1rem;
   line-height: 1;
-  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  margin-top: 2px;
+  transition: opacity var(--transition), color var(--transition);
 }
 .todo-delete-btn:hover { color: #e05a5a; }
 
@@ -2395,6 +2409,83 @@ body {
 }
 
 /* Approaching Events Banner */
+/* ── Weekly Targets Banner on Today Screen ── */
+.weekly-targets-today-card {
+  background: var(--surface);
+  border: 1px solid rgba(201, 169, 110, 0.45);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.weekly-targets-today-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.weekly-targets-today-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.weekly-targets-icon {
+  font-size: 1.05rem;
+}
+
+.weekly-targets-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.weekly-targets-range {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.weekly-targets-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent-dark);
+  background: var(--accent-faint);
+  padding: 3px 10px;
+  border-radius: var(--radius-full);
+}
+
+.weekly-targets-today-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.weekly-target-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.weekly-target-item.done .weekly-target-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.weekly-target-text {
+  flex: 1;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* ── Approaching Events Banner (1 Week Window) ── */
 .upcoming-events-card {
   background: var(--accent-faint);
   border: 1px solid rgba(201, 169, 110, 0.4);

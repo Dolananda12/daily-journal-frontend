@@ -102,17 +102,25 @@ function TargetList({
     onChange(items.filter(t => t.id !== id))
   }
 
+  function autoResize(el: HTMLTextAreaElement | null) {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }
+
   function addItem() {
     const newItem: TargetItem = { id: uid(), text: '', done: false }
     onChange([...items, newItem])
     setTimeout(() => {
-      const inputs = document.querySelectorAll<HTMLInputElement>('.target-item-input')
-      inputs[inputs.length - 1]?.focus()
+      const inputs = document.querySelectorAll<HTMLTextAreaElement>('.target-item-input')
+      const last = inputs[inputs.length - 1]
+      last?.focus()
+      autoResize(last)
     }, 50)
   }
 
-  function handleKeyDown(e: React.KeyboardEvent, id: string) {
-    if (e.key === 'Enter') { e.preventDefault(); addItem() }
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>, id: string) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); addItem() }
     if (e.key === 'Backspace') {
       const item = items.find(t => t.id === id)
       if (item && item.text === '') {
@@ -120,8 +128,10 @@ function TargetList({
         const idx = items.findIndex(t => t.id === id)
         deleteItem(id)
         setTimeout(() => {
-          const inputs = document.querySelectorAll<HTMLInputElement>('.target-item-input')
-          inputs[Math.max(0, idx - 1)]?.focus()
+          const inputs = document.querySelectorAll<HTMLTextAreaElement>('.target-item-input')
+          const prev = inputs[Math.max(0, idx - 1)]
+          prev?.focus()
+          autoResize(prev)
         }, 50)
       }
     }
@@ -164,10 +174,16 @@ function TargetList({
                 </svg>
               )}
             </button>
-            <input
+            <textarea
               className="target-item-input"
+              rows={1}
+              ref={el => autoResize(el)}
               value={item.text}
-              onChange={e => editText(item.id, e.target.value)}
+              onChange={e => {
+                editText(item.id, e.target.value)
+                autoResize(e.target)
+              }}
+              onFocus={e => autoResize(e.target)}
               onKeyDown={e => handleKeyDown(e, item.id)}
               placeholder="Write a target…"
             />

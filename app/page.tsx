@@ -79,8 +79,13 @@ export default function HomePage() {
     setCurrentEntry(null)
     try {
       const res = await apiFetch(`/api/entries/${date}`)
-      const data = await res.json()
-      setCurrentEntry(data ?? null)
+      if (res.ok) {
+        const text = await res.text()
+        const data = text ? JSON.parse(text) : null
+        setCurrentEntry(data ?? null)
+      } else {
+        setCurrentEntry(null)
+      }
     } catch {
       setCurrentEntry(null)
     } finally {
